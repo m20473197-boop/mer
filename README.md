@@ -4,14 +4,15 @@ A multiplayer **life-simulation game** running as a **Telegram Bot**, inspired
 by real life in Iran — casual, humorous and friendly. This repository contains
 the clean, scalable foundation plus the **Job and Income System**, the
 **Business System**, the **Housing and Real-Estate System**, the **Land,
-Construction and Renovation System**, the read-only **📈 بازار ایران** market,
-and the **Admin Panel**: players, main menu, profile, status, level/XP, wallet,
-a time-based salary job system, a predefined business catalog with owned
+Construction and Renovation System**, the persistent **📈 بازار ایران** market,
+**🧱 دیوار ایران** player marketplace, the fixed-car dealership, and the
+**Admin Panel**: players, main menu, profile, status, level/XP, wallet, a
+time-based salary job system, a predefined business catalog with owned
 balances and daily income, a full housing market with dynamic prices, land
 trading, time-based construction and renovations that raise property value,
 real TGJU-backed USD/gold/coin quotes with a restart-safe three-day scheduler,
 and a button-driven admin console to run the game. Future systems (education,
-vehicles, ...) will be built on top of this base step by step.
+loans, investments, ...) will be built on top of this base step by step.
 
 ## Tech Stack
 
@@ -107,10 +108,22 @@ IRAN_MARKET_HOUSING_REFERENCE_CITY=تهران
 IRAN_MARKET_HOUSING_REFERENCE_PRICE_PER_SQM=
 ```
 
-The tables `iran_market_assets`, `iran_market_price_history`, and
-`iran_market_update_state` are additive and are created by the existing
-startup `create_all` path. Legacy Admin Economy tables (`market_assets` and
-`market_price_ticks`) are intentionally untouched and remain separate.
+The USD, gold, and coin quotes are also purchasable at the current stored
+price through the existing integer-only `MoneyService`. Purchases persist in
+`iran_market_holdings` (gold quantities are grams); repeated purchases
+increase the same holding atomically. Housing remains display-only. The UI
+supports quantity input, and the exact Persian direct forms are:
+
+- `خرید دلار 100`
+- `خرید 5 گرم طلا`
+- `خرید طلا 5 گرم`
+- `خرید 1 سکه`
+
+The tables `iran_market_assets`, `iran_market_price_history`,
+`iran_market_holdings`, and `iran_market_update_state` are additive and are
+created by the existing startup `create_all` path. Legacy Admin Economy tables
+(`market_assets` and `market_price_ticks`) are intentionally untouched and
+remain separate.
 
 ## Database
 
@@ -161,8 +174,9 @@ payment through the wallet, unaffordable-divorce blocking, the divorce waiver
 for a wronged spouse, hidden cheating with escalating consequences and forced
 divorce, relationship events with quality-scaled pregnancy odds, lazy birth
 settlement, children, family history and profile integration) —
-**458 tests**, including focused provider, scheduling, restart, failure-
-preservation, stale-response and four-asset market coverage.
+**475 tests**, including focused provider, scheduling, restart, failure-
+preservation, stale-response, market-purchase, car-marketplace and migration
+coverage.
 
 ## Basic Project Structure
 
@@ -576,13 +590,14 @@ and old databases are upgraded additively (no rows dropped).
 
 ## What is intentionally NOT in this stage
 
-Education, skills, vehicles, loans, investments, a trading exchange, crime,
-police, prisons and bankruptcy are **not implemented** — the architecture is
-simply prepared for them. The read-only **📈 بازار ایران** quote screen is
-implemented separately and is not a player trading exchange. (Marriage and
-family **are** implemented — see the section above; child *growth*, education
-and family expenses are deliberately left as the next step and already have
-their columns.)
+Education, skills, loans, investments, a trading exchange, crime, police,
+prisons and bankruptcy are **not implemented** — the architecture is simply
+prepared for them. The fixed-car dealership and real-asset **🧱 دیوار ایران**
+marketplace are implemented separately from the Iranian quote market; the
+latter supports player holdings but is not a player-to-player exchange.
+(Marriage and family **are** implemented — see the section above; child
+*growth*, education and family expenses are deliberately left as the next
+step and already have their columns.)
 
 ## Useful Commands
 

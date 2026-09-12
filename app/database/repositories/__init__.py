@@ -30,6 +30,9 @@ from app.database.repositories.iran_market_asset_repository import (
 from app.database.repositories.iran_market_price_history_repository import (
     IranMarketPriceHistoryRepository,
 )
+from app.database.repositories.iran_market_holding_repository import (
+    IranMarketHoldingRepository,
+)
 from app.database.repositories.iran_market_update_state_repository import (
     IranMarketUpdateStateRepository,
 )
@@ -73,6 +76,7 @@ __all__ = [
     "HouseListingRepository",
     "IranMarketAssetRepository",
     "IranMarketPriceHistoryRepository",
+    "IranMarketHoldingRepository",
     "IranMarketUpdateStateRepository",
     "HouseSaleRepository",
     "RentalContractRepository",

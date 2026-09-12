@@ -74,3 +74,24 @@ class MarketUpdateResult:
     @property
     def skipped(self) -> bool:
         return not self.attempted
+
+
+@dataclass(frozen=True, slots=True)
+class IranMarketHoldingData:
+    """One persistent player holding, measured in the asset's configured unit."""
+
+    asset_code: str
+    display_name: str
+    quantity: int
+    unit_label: str
+
+
+@dataclass(frozen=True, slots=True)
+class IranMarketPurchaseResult:
+    """Committed result of one atomic market purchase."""
+
+    asset: IranMarketAssetData
+    quantity: int
+    total_cost: int
+    wallet_balance_after: int
+    holding: IranMarketHoldingData

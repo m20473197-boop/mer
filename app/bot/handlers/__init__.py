@@ -156,7 +156,7 @@ def register_handlers(application: Application) -> None:
                 ),
                 CallbackQueryHandler(
                     divar.start_listing_price,
-                    pattern=rf"^(?:{callbacks.DIVAR_SELL_HOUSE_PREFIX}|{callbacks.DIVAR_SELL_LAND_PREFIX})\d+$",
+                    pattern=rf"^(?:{callbacks.DIVAR_SELL_HOUSE_PREFIX}|{callbacks.DIVAR_SELL_LAND_PREFIX}|{callbacks.DIVAR_SELL_CAR_PREFIX})\d+$",
                 ),
             ],
             states={
@@ -184,6 +184,41 @@ def register_handlers(application: Application) -> None:
         MessageHandler(
             filters.TEXT & filters.Regex(vehicle.VEHICLE_TEXT_PATTERN),
             vehicle.vehicle_text_handler,
+        )
+    )
+
+    # Iran Market purchase input and direct Persian purchase commands.
+    application.add_handler(
+        ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(
+                    iran_market.start_purchase_input,
+                    pattern=rf"^{callbacks.MARKET_BUY_PREFIX}[A-Z_]+$",
+                )
+            ],
+            states={
+                iran_market.IRAN_MARKET_INPUT_STATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        iran_market.purchase_input_received,
+                    )
+                ]
+            },
+            fallbacks=[
+                CallbackQueryHandler(
+                    iran_market.cancel_purchase_input,
+                    pattern=rf"^{callbacks.MARKET_INPUT_CANCEL}$",
+                )
+            ],
+            name="iran_market_purchase_input",
+            persistent=False,
+            allow_reentry=True,
+        )
+    )
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Regex(iran_market.MARKET_PURCHASE_PATTERN),
+            iran_market.purchase_command_handler,
         )
     )
 
@@ -383,7 +418,7 @@ def register_handlers(application: Application) -> None:
     application.add_handler(
         CallbackQueryHandler(
             divar.show_category_results,
-            pattern=rf"^{callbacks.DIVAR_CATEGORY_PREFIX}(?:house|land)$",
+            pattern=rf"^{callbacks.DIVAR_CATEGORY_PREFIX}(?:house|land|car)$",
         )
     )
     application.add_handler(
@@ -427,7 +462,7 @@ def register_handlers(application: Application) -> None:
     application.add_handler(
         CallbackQueryHandler(
             divar.show_filter_category,
-            pattern=rf"^{callbacks.DIVAR_FILTER_CATEGORY_PREFIX}(?:house|land)$",
+            pattern=rf"^{callbacks.DIVAR_FILTER_CATEGORY_PREFIX}(?:house|land|car)$",
         )
     )
     application.add_handler(

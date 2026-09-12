@@ -1,7 +1,7 @@
 """Database access for ``marketplace_listings``.
 
 All active-listing filtering and pagination stays in SQL. The service layer
-only hydrates the small result page with the existing house/land DTOs.
+only hydrates the small result page with existing house, land, and vehicle DTOs.
 """
 
 from __future__ import annotations
@@ -14,7 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models.house import House
 from app.database.models.land import Land
 from app.database.models.marketplace_listing import MarketplaceListing
+from app.database.models.vehicle_model import VehicleModel
+from app.database.models.vehicle_ownership import (
+    VEHICLE_OWNERSHIP_OWNED,
+    VehicleOwnership,
+)
 from app.game.marketplace.catalog import (
+    ASSET_TYPE_CAR,
     ASSET_TYPE_HOUSE,
     ASSET_TYPE_LAND,
     LISTING_STATUS_ACTIVE,
@@ -146,6 +152,8 @@ class MarketplaceListingRepository:
             statements.append(self._house_ids(criteria))
         if criteria.asset_type in (None, ASSET_TYPE_LAND):
             statements.append(self._land_ids(criteria))
+        if criteria.asset_type in (None, ASSET_TYPE_CAR):
+            statements.append(self._car_ids(criteria))
         return statements
 
     @staticmethod
@@ -218,6 +226,54 @@ class MarketplaceListingRepository:
                     MarketplaceListing.asset_id == House.id,
                 ),
             )
+            .where(*conditions)
+        )
+
+    def _car_ids(self, criteria: MarketplaceSearchCriteria):
+        if criteria.asset_type in (ASSET_TYPE_HOUSE, ASSET_TYPE_LAND):
+            return select(MarketplaceListing.id).where(False)
+        if (
+            criteria.min_area_sqm is not None
+            or criteria.max_area_sqm is not None
+            or criteria.bedrooms is not None
+            or criteria.construction_year is not None
+            or criteria.quality
+            or criteria.city
+            or criteria.neighborhood
+        ):
+            # These filters have no meaning for vehicle listings. Text search
+            # below still searches the real predefined model name.
+            return select(MarketplaceListing.id).where(False)
+        conditions = [
+            MarketplaceListing.status == LISTING_STATUS_ACTIVE,
+            MarketplaceListing.asset_type == ASSET_TYPE_CAR,
+            MarketplaceListing.asset_id == VehicleOwnership.id,
+            MarketplaceListing.seller_player_id == VehicleOwnership.owner_player_id,
+            VehicleOwnership.status == VEHICLE_OWNERSHIP_OWNED,
+        ]
+        if criteria.min_price is not None:
+            conditions.append(MarketplaceListing.price >= criteria.min_price)
+        if criteria.max_price is not None:
+            conditions.append(MarketplaceListing.price <= criteria.max_price)
+        if criteria.text_terms:
+            for term in criteria.text_terms:
+                conditions.append(
+                    or_(
+                        VehicleModel.name.ilike(self._contains(term), escape="\\"),
+                        VehicleModel.code.ilike(self._contains(term), escape="\\"),
+                    )
+                )
+        return (
+            select(MarketplaceListing.id)
+            .select_from(MarketplaceListing)
+            .join(
+                VehicleOwnership,
+                and_(
+                    MarketplaceListing.asset_type == ASSET_TYPE_CAR,
+                    MarketplaceListing.asset_id == VehicleOwnership.id,
+                ),
+            )
+            .join(VehicleModel, VehicleModel.id == VehicleOwnership.vehicle_model_id)
             .where(*conditions)
         )
 

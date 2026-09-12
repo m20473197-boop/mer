@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover - imports are only for type checkers
     from app.game.housing.dto import HouseData
     from app.game.realestate.dto import LandData
+    from app.game.vehicle.dto import VehicleOwnershipData
 
 from app.game.marketplace.catalog import LISTING_STATUS_ACTIVE
 
@@ -54,7 +55,7 @@ class MarketplaceSearchResult:
 
 @dataclass(frozen=True, slots=True)
 class MarketplaceListingData:
-    """A listing plus the real underlying house or land DTO."""
+    """A listing plus the real underlying property or vehicle DTO."""
 
     id: int
     seller_player_id: int
@@ -68,14 +69,19 @@ class MarketplaceListingData:
     buyer_player_id: int | None
     house: "HouseData | None" = None
     land: "LandData | None" = None
+    vehicle: "VehicleOwnershipData | None" = None
 
     @property
     def is_active(self) -> bool:
         return self.status == LISTING_STATUS_ACTIVE
 
     @property
-    def asset(self) -> "HouseData | LandData | None":
-        return self.house if self.house is not None else self.land
+    def asset(self) -> "HouseData | LandData | VehicleOwnershipData | None":
+        if self.house is not None:
+            return self.house
+        if self.land is not None:
+            return self.land
+        return self.vehicle
 
     @property
     def asset_label(self) -> str:
@@ -83,6 +89,8 @@ class MarketplaceListingData:
             return f"خانه #{self.house.id}"
         if self.land is not None:
             return f"زمین #{self.land.id}"
+        if self.vehicle is not None:
+            return self.vehicle.model.name
         return f"دارایی #{self.asset_id}"
 
 
@@ -94,7 +102,7 @@ class MarketplaceOwnedAssetData:
     asset_id: int
     label: str
     location: str
-    area_sqm: int
+    area_sqm: int | None
 
 
 @dataclass(frozen=True, slots=True)

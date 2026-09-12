@@ -28,6 +28,8 @@ BUSINESS_START_PREFIX: str = "business_start_"
 # 📈 بازار ایران — the four fixed asset detail screens
 MARKET_MENU: str = "iran_market_menu"
 MARKET_ASSET_PREFIX: str = "iran_market_asset_"
+MARKET_BUY_PREFIX: str = "iran_market_buy_"
+MARKET_INPUT_CANCEL: str = "iran_market_input_cancel"
 
 # 🧱 دیوار ایران — state stays server-side; callbacks carry only short ids.
 DIVAR_MENU: str = "divar_menu"
@@ -53,6 +55,7 @@ DIVAR_FILTER_APPLY: str = "divar_filter_apply"
 DIVAR_INPUT_CANCEL: str = "divar_input_cancel"
 DIVAR_SELL_HOUSE_PREFIX: str = "divar_sell_house_"
 DIVAR_SELL_LAND_PREFIX: str = "divar_sell_land_"
+DIVAR_SELL_CAR_PREFIX: str = "divar_sell_car_"
 
 # 🚗 نمایشگاه ماشین حاج ممد — model/ownership ids are validated by VehicleService.
 VEHICLE_MENU: str = "vehicle_menu"

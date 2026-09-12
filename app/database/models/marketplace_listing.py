@@ -34,7 +34,7 @@ class MarketplaceListing(Base):
         CheckConstraint("price > 0", name="ck_marketplace_listings_positive_price"),
         CheckConstraint("asset_id > 0", name="ck_marketplace_listings_positive_asset_id"),
         CheckConstraint(
-            "asset_type IN ('house', 'land')",
+            "asset_type IN ('house', 'land', 'car')",
             name="ck_marketplace_listings_supported_asset_type",
         ),
         CheckConstraint(
@@ -71,7 +71,8 @@ class MarketplaceListing(Base):
         nullable=False,
         index=True,
     )
-    # Polymorphic reference: ('house', houses.id) or ('land', lands.id).
+    # Polymorphic reference: ('house', houses.id), ('land', lands.id), or
+    # ('car', vehicle_ownerships.id). The service validates each reference.
     asset_type: Mapped[str] = mapped_column(String(16), nullable=False)
     asset_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     price: Mapped[int] = mapped_column(BigInteger, nullable=False)

@@ -8,6 +8,7 @@ import pytest
 
 from app.database.repositories.house_repository import HouseRepository
 from app.game.marketplace.catalog import (
+    ASSET_TYPE_CAR,
     ASSET_TYPE_HOUSE,
     ASSET_TYPE_LAND,
     LISTING_STATUS_SOLD,
@@ -21,6 +22,7 @@ from app.services.divar_service import (
     MarketplaceCannotBuyOwnListingError,
     MarketplaceInvalidPriceError,
     MarketplaceListingAlreadyExistsError,
+    MarketplaceListingNotActiveError,
 )
 
 
@@ -54,7 +56,7 @@ async def _players_and_house(services):
 @pytest.mark.asyncio
 async def test_divar_accepts_only_real_supported_assets_and_blocks_duplicates(services):
     seller, buyer, house = await _players_and_house(services)
-    assert SUPPORTED_ASSET_TYPES == (ASSET_TYPE_HOUSE, ASSET_TYPE_LAND)
+    assert SUPPORTED_ASSET_TYPES == (ASSET_TYPE_HOUSE, ASSET_TYPE_LAND, ASSET_TYPE_CAR)
 
     with pytest.raises(MarketplaceAssetNotOwnedError):
         await services.divar.create_listing(buyer.player_id, ASSET_TYPE_HOUSE, house.id, 100)
@@ -162,3 +164,98 @@ async def test_seller_cannot_buy_own_divar_listing(services):
     )
     with pytest.raises(MarketplaceCannotBuyOwnListingError):
         await services.divar.purchase(seller.player_id, listing.listing.id)
+
+
+async def _players_and_cars(services, *, two_cars: bool = False):
+    seller = await services.players.register_or_get(
+        telegram_user_id=7201 if two_cars else 7211,
+        username="carseller2" if two_cars else "carseller",
+        display_name="فروشنده ماشین",
+    )
+    buyer = await services.players.register_or_get(
+        telegram_user_id=7202 if two_cars else 7212,
+        username="carbuyer2" if two_cars else "carbuyer",
+        display_name="خریدار ماشین",
+    )
+    price = 780_000_000 + (700_000_000 if two_cars else 0)
+    await services.money.add_money(seller.player_id, price)
+    first = await services.vehicles.purchase(seller.player_id, 1)
+    second = None
+    if two_cars:
+        second = await services.vehicles.purchase(seller.player_id, 2)
+    return seller, buyer, first.ownership, second.ownership if second else None
+
+
+@pytest.mark.asyncio
+async def test_divar_car_assets_are_owned_real_rows_and_searchable(services):
+    seller, buyer, first, second = await _players_and_cars(services, two_cars=True)
+    owned = await services.divar.get_owned_assets(seller.player_id)
+    assert {
+        (asset.asset_type, asset.asset_id) for asset in owned
+    } == {
+        (ASSET_TYPE_CAR, first.ownership_id),
+        (ASSET_TYPE_CAR, second.ownership_id),
+    }
+
+    first_listing = await services.divar.create_listing(
+        seller.player_id, ASSET_TYPE_CAR, first.ownership_id, 500_000_000
+    )
+    second_listing = await services.divar.create_listing(
+        seller.player_id, ASSET_TYPE_CAR, second.ownership_id, 600_000_000
+    )
+    assert first_listing.listing.vehicle is not None
+    assert first_listing.listing.vehicle.ownership_id == first.ownership_id
+    with pytest.raises(MarketplaceListingAlreadyExistsError):
+        await services.divar.create_listing(
+            seller.player_id, ASSET_TYPE_CAR, first.ownership_id, 550_000_000
+        )
+    with pytest.raises(MarketplaceAssetNotOwnedError):
+        await services.divar.create_listing(
+            buyer.player_id, ASSET_TYPE_CAR, first.ownership_id, 550_000_000
+        )
+
+    page = await services.divar.search(
+        MarketplaceSearchCriteria(asset_type=ASSET_TYPE_CAR), page=0, page_size=1
+    )
+    assert page.total == 2 and len(page.listings) == 1 and page.has_next
+    next_page = await services.divar.search(
+        MarketplaceSearchCriteria(asset_type=ASSET_TYPE_CAR), page=1, page_size=1
+    )
+    assert len(next_page.listings) == 1 and not next_page.has_next
+
+    parsed = parse_search_query("ماشین پراید")
+    assert parsed.asset_type == ASSET_TYPE_CAR
+    assert (await services.divar.search(parsed, page_size=10)).total == 2
+    price_filtered = await services.divar.search(
+        MarketplaceSearchCriteria(
+            asset_type=ASSET_TYPE_CAR,
+            min_price=550_000_000,
+            max_price=650_000_000,
+        )
+    )
+    assert price_filtered.total == 1
+    assert price_filtered.listings[0].id == second_listing.listing.id
+
+
+@pytest.mark.asyncio
+async def test_divar_car_purchase_is_atomic_transfers_ownership_and_closes_listing(services):
+    seller, buyer, ownership, _ = await _players_and_cars(services)
+    listing = await services.divar.create_listing(
+        seller.player_id, ASSET_TYPE_CAR, ownership.ownership_id, 500_000_000
+    )
+    await services.money.add_money(buyer.player_id, 500_000_000)
+
+    result = await services.divar.purchase(buyer.player_id, listing.listing.id)
+    assert result.listing.status == LISTING_STATUS_SOLD
+    assert result.listing.vehicle is not None
+    assert result.listing.vehicle.owner_player_id == buyer.player_id
+    assert await services.money.get_balance(seller.player_id) == 500_000_000
+    assert await services.money.get_balance(buyer.player_id) == 0
+    assert await services.vehicles.get_owned_vehicle(
+        buyer.player_id, ownership.ownership_id
+    )
+    assert await services.vehicles.get_owned_vehicles(seller.player_id) == []
+    assert (await services.divar.search()).total == 0
+
+    with pytest.raises(MarketplaceListingNotActiveError):
+        await services.divar.purchase(buyer.player_id, listing.listing.id)

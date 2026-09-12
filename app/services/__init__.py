@@ -59,7 +59,9 @@ class ServiceRegistry:
         self.money = MoneyService(session_factory)
         self.jobs = JobService(session_factory, money_service=self.money)
         self.businesses = BusinessService(session_factory, money_service=self.money)
-        self.market = IranMarketService(session_factory, provider=market_provider)
+        self.market = IranMarketService(
+            session_factory, provider=market_provider, money_service=self.money
+        )
         # Explicit alias for code that uses the full feature name.
         self.iran_market = self.market
         # Singular alias keeps the dependency easy to discover for callers

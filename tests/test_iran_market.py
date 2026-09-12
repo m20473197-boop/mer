@@ -24,7 +24,13 @@ from app.game.market.provider import (
     TGJUProvider,
     TGJUProviderConfig,
 )
-from app.services.iran_market_service import IranMarketService
+from app.bot.handlers.iran_market import _parse_direct_purchase
+from app.game.shared.errors import InsufficientFundsError
+from app.services import ServiceRegistry
+from app.services.iran_market_service import (
+    IranMarketPurchaseNotAllowedError,
+    IranMarketService,
+)
 
 
 class FakeProvider:
@@ -73,7 +79,9 @@ class StaleResponseProvider:
         return dict(self.new_prices)
 
 
-def _service(database: Database, provider, now_fn, **kwargs) -> IranMarketService:
+def _service(
+    database: Database, provider, now_fn, *, money_service=None, **kwargs
+) -> IranMarketService:
     settings = {
         "update_interval_seconds": 3 * 24 * 60 * 60,
         "initial_retry_seconds": 1,
@@ -84,6 +92,7 @@ def _service(database: Database, provider, now_fn, **kwargs) -> IranMarketServic
     return IranMarketService(
         database.session_factory,
         provider=provider,
+        money_service=money_service,
         now_fn=now_fn,
         **settings,
     )
@@ -298,3 +307,73 @@ async def test_provider_settings_are_environment_configurable(monkeypatch):
     assert config.retry_attempts == 5
     assert config.retry_backoff_seconds == 0.25
     assert config.api_key == "secret-not-for-logs"
+
+
+async def test_market_purchases_use_stored_prices_and_accumulate_holdings(db):
+    provider = FakeProvider()
+    services = ServiceRegistry(db.session_factory, market_provider=provider)
+    await services.market.ensure_initial_state()
+    player = await services.players.register_or_get(
+        telegram_user_id=9201, username="marketbuyer", display_name="خریدار بازار"
+    )
+    total = 100 * provider.prices[USD_CODE] + 5 * provider.prices[GOLD_CODE] + provider.prices[COIN_CODE]
+    await services.money.add_money(player.player_id, total + 2 * provider.prices[USD_CODE])
+
+    usd = await services.market.purchase_asset(player.player_id, USD_CODE, 100)
+    gold = await services.market.purchase_asset(player.player_id, GOLD_CODE, 5)
+    coin = await services.market.purchase_asset(player.player_id, COIN_CODE, 1)
+    await services.market.purchase_asset(player.player_id, USD_CODE, 2)
+
+    assert usd.total_cost == 60_000_000
+    assert gold.total_cost == 250_000_000
+    assert coin.total_cost == 500_000_000
+    holdings = {holding.asset_code: holding.quantity for holding in await services.market.get_holdings(player.player_id)}
+    assert holdings == {USD_CODE: 102, GOLD_CODE: 5, COIN_CODE: 1}
+    assert await services.money.get_balance(player.player_id) == 0
+
+    with pytest.raises(IranMarketPurchaseNotAllowedError):
+        await services.market.purchase_asset(player.player_id, HOUSING_CODE, 1)
+
+
+async def test_market_purchase_insufficient_balance_is_atomic(db):
+    provider = FakeProvider()
+    services = ServiceRegistry(db.session_factory, market_provider=provider)
+    await services.market.ensure_initial_state()
+    player = await services.players.register_or_get(
+        telegram_user_id=9202, username="poormarket", display_name="بدون موجودی"
+    )
+
+    with pytest.raises(InsufficientFundsError):
+        await services.market.purchase_asset(player.player_id, GOLD_CODE, 1)
+
+    assert await services.money.get_balance(player.player_id) == 0
+    assert await services.market.get_holdings(player.player_id) == []
+
+
+async def test_market_purchase_commands_parse_all_required_persian_forms():
+    assert _parse_direct_purchase("خرید دلار 100") == (USD_CODE, 100)
+    assert _parse_direct_purchase("خرید 5 گرم طلا") == (GOLD_CODE, 5)
+    assert _parse_direct_purchase("خرید طلا ۵ گرم") == (GOLD_CODE, 5)
+    assert _parse_direct_purchase("خرید 1 سکه") == (COIN_CODE, 1)
+    assert _parse_direct_purchase("خرید سکه 1") is None
+
+
+async def test_concurrent_market_purchases_keep_money_and_quantity_consistent(db):
+    provider = FakeProvider()
+    services = ServiceRegistry(db.session_factory, market_provider=provider)
+    await services.market.ensure_initial_state()
+    player = await services.players.register_or_get(
+        telegram_user_id=9203, username="concurrentmarket", display_name="همزمان"
+    )
+    await services.money.add_money(player.player_id, provider.prices[USD_CODE])
+
+    outcomes = await asyncio.gather(
+        services.market.purchase_asset(player.player_id, USD_CODE, 1),
+        services.market.purchase_asset(player.player_id, USD_CODE, 1),
+        return_exceptions=True,
+    )
+    assert sum(not isinstance(outcome, Exception) for outcome in outcomes) == 1
+    assert sum(isinstance(outcome, InsufficientFundsError) for outcome in outcomes) == 1
+    holdings = await services.market.get_holdings(player.player_id)
+    assert [(holding.asset_code, holding.quantity) for holding in holdings] == [(USD_CODE, 1)]
+    assert await services.money.get_balance(player.player_id) == 0

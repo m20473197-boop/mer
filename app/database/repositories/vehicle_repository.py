@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models.vehicle_model import VehicleModel
@@ -112,6 +112,23 @@ class VehicleOwnershipRepository:
             )
         )
         return (await self._session.execute(statement)).one_or_none()
+
+    async def transfer_owner_if(
+        self, ownership_id: int, seller_player_id: int, buyer_player_id: int
+    ) -> bool:
+        statement = (
+            update(VehicleOwnership)
+            .where(
+                VehicleOwnership.id == ownership_id,
+                VehicleOwnership.owner_player_id == seller_player_id,
+                VehicleOwnership.status == VEHICLE_OWNERSHIP_OWNED,
+            )
+            .values(owner_player_id=buyer_player_id)
+        )
+        result = await self._session.execute(
+            statement, execution_options={"synchronize_session": False}
+        )
+        return bool(result.rowcount)
 
     async def create(
         self,

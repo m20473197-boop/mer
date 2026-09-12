@@ -8,6 +8,7 @@ from app.bot.keyboards import callbacks
 from app.bot.keyboards.main_menu import BUTTON_BACK_TO_MAIN
 from app.bot.messages.formatters import fa_int
 from app.game.marketplace.catalog import (
+    ASSET_TYPE_CAR,
     ASSET_TYPE_HOUSE,
     ASSET_TYPE_LAND,
     CATEGORY_LABELS,
@@ -51,6 +52,10 @@ def build_divar_categories() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     "🌍 زمین",
                     callback_data=f"{callbacks.DIVAR_CATEGORY_PREFIX}{ASSET_TYPE_LAND}",
+                ),
+                InlineKeyboardButton(
+                    "🚗 ماشین",
+                    callback_data=f"{callbacks.DIVAR_CATEGORY_PREFIX}{ASSET_TYPE_CAR}",
                 ),
             ],
             [InlineKeyboardButton("📋 همه آگهی‌ها", callback_data=callbacks.DIVAR_SHOW_ALL)],
@@ -132,15 +137,17 @@ def build_divar_owned_assets(
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for asset in assets:
-        prefix = (
-            callbacks.DIVAR_SELL_HOUSE_PREFIX
-            if asset.asset_type == ASSET_TYPE_HOUSE
-            else callbacks.DIVAR_SELL_LAND_PREFIX
-        )
+        if asset.asset_type == ASSET_TYPE_HOUSE:
+            prefix = callbacks.DIVAR_SELL_HOUSE_PREFIX
+        elif asset.asset_type == ASSET_TYPE_LAND:
+            prefix = callbacks.DIVAR_SELL_LAND_PREFIX
+        else:
+            prefix = callbacks.DIVAR_SELL_CAR_PREFIX
+        area = f" — {fa_int(asset.area_sqm)} متر" if asset.area_sqm is not None else ""
         rows.append(
             [
                 InlineKeyboardButton(
-                    f"{asset.label} — {fa_int(asset.area_sqm)} متر",
+                    f"{asset.label}{area}",
                     callback_data=f"{prefix}{asset.asset_id}",
                 )
             ]
@@ -183,6 +190,10 @@ def build_divar_filters(state: MarketplaceFilterState) -> InlineKeyboardMarkup:
                 "🌍 زمین",
                 callback_data=f"{callbacks.DIVAR_FILTER_CATEGORY_PREFIX}{ASSET_TYPE_LAND}",
             ),
+            InlineKeyboardButton(
+                "🚗 ماشین",
+                callback_data=f"{callbacks.DIVAR_FILTER_CATEGORY_PREFIX}{ASSET_TYPE_CAR}",
+            ),
         ],
         [InlineKeyboardButton(f"📍 شهر: {city_label}", callback_data=callbacks.DIVAR_FILTER_CITY_MENU)],
         [
@@ -216,6 +227,11 @@ def build_divar_city_filters(cities: list[str]) -> InlineKeyboardMarkup:
 
 def _compact_label(listing: MarketplaceListingData) -> str:
     asset = listing.house or listing.land
+    if listing.vehicle is not None:
+        return (
+            f"🚗 #{fa_int(listing.id)} {listing.vehicle.model.name} — "
+            f"{fa_int(listing.price)} تومان"
+        )
     if asset is None:
         return f"#{fa_int(listing.id)} — آگهی"
     if listing.house is not None:

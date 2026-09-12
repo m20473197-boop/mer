@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Mapping
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import constants
@@ -19,6 +20,10 @@ from app.database.repositories.iran_market_asset_repository import (
 from app.database.repositories.iran_market_price_history_repository import (
     IranMarketPriceHistoryRepository,
 )
+from app.database.repositories.iran_market_holding_repository import (
+    IranMarketHoldingRepository,
+)
+from app.database.repositories.player_repository import PlayerRepository
 from app.database.repositories.iran_market_update_state_repository import (
     IranMarketUpdateStateRepository,
 )
@@ -27,15 +32,20 @@ from app.game.housing.catalog import (
     get_base_price_per_sqm,
 )
 from app.game.market.catalog import (
+    ASSET_HOUSING,
+    COIN_CODE,
+    GOLD_CODE,
     IRAN_MARKET_ASSET_CATALOG,
     IRAN_MARKET_ASSET_CODES,
-    ASSET_HOUSING,
+    USD_CODE,
     get_asset_definition,
     is_external_asset,
 )
 from app.game.market.dto import (
     IranMarketAssetData,
     IranMarketHistoryData,
+    IranMarketHoldingData,
+    IranMarketPurchaseResult,
     IranMarketSnapshotData,
     MarketUpdateResult,
 )
@@ -44,7 +54,8 @@ from app.game.market.provider import (
     MarketDataProvider,
     TGJUProvider,
 )
-from app.game.shared.errors import DomainError
+from app.game.shared.errors import DomainError, PlayerNotFoundError
+from app.services.money_service import MoneyService
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +66,18 @@ class IranMarketAssetNotFoundError(DomainError):
 
 class IranMarketDataInvalidError(DomainError):
     """A provider returned an incomplete or invalid snapshot."""
+
+
+class IranMarketPurchaseNotAllowedError(DomainError):
+    """The requested asset is display-only or has no current price."""
+
+
+class IranMarketInvalidQuantityError(DomainError):
+    """The requested market quantity is not a positive integer."""
+
+
+class IranMarketPurchaseError(DomainError):
+    """A market purchase could not be committed atomically."""
 
 
 def _utc_now() -> datetime:
@@ -70,13 +93,14 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 
 class IranMarketService:
-    """Shared stored-price service; handlers only read its DTOs."""
+    """Shared stored-price and purchase service for the Iranian market."""
 
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         *,
         provider: MarketDataProvider | None = None,
+        money_service: MoneyService | None = None,
         now_fn: Callable[[], datetime] | None = None,
         update_interval_seconds: int | None = None,
         scheduler_check_seconds: int | None = None,
@@ -88,6 +112,7 @@ class IranMarketService:
         housing_reference_price_per_sqm: int | None = None,
     ) -> None:
         self._session_factory = session_factory
+        self._money = money_service
         self._provider = provider or TGJUProvider()
         self._now_fn = now_fn or _utc_now
         self._update_interval = _positive_setting(
@@ -145,6 +170,7 @@ class IranMarketService:
         ):
             self._housing_reference_price_override = None
         self._scheduler_task: asyncio.Task[None] | None = None
+        self._purchase_locks: dict[int, asyncio.Lock] = {}
 
     # --- Lifecycle ---------------------------------------------------------
 
@@ -312,6 +338,95 @@ class IranMarketService:
                 asset.id, limit=limit
             )
             return [self._to_history_data(row, asset.code) for row in rows]
+
+    async def get_holdings(self, player_id: int) -> list[IranMarketHoldingData]:
+        """Return the player's persistent USD/gold/coin holdings."""
+        async with self._session_factory() as session:
+            if not await PlayerRepository(session).exists(player_id):
+                raise PlayerNotFoundError(f"player_id={player_id} not found")
+            rows = await IranMarketHoldingRepository(session).list_by_player(player_id)
+            return [self._to_holding_data(holding, asset) for holding, asset in rows]
+
+    async def purchase_asset(
+        self, player_id: int, asset_code: str, quantity: int
+    ) -> IranMarketPurchaseResult:
+        """Buy USD, gold or coin using the current stored quote atomically."""
+        if (
+            isinstance(quantity, bool)
+            or not isinstance(quantity, int)
+            or quantity <= 0
+        ):
+            raise IranMarketInvalidQuantityError(str(quantity))
+        if not isinstance(asset_code, str) or asset_code not in {
+            USD_CODE,
+            GOLD_CODE,
+            COIN_CODE,
+        }:
+            raise IranMarketPurchaseNotAllowedError(str(asset_code))
+        if self._money is None:
+            raise IranMarketPurchaseError("money service is not configured")
+
+        lock = self._purchase_locks.setdefault(player_id, asyncio.Lock())
+        async with lock:
+            async with self._session_factory() as session:
+                if not await PlayerRepository(session).exists(player_id):
+                    raise PlayerNotFoundError(f"player_id={player_id} not found")
+                asset = await IranMarketAssetRepository(session).get_by_code(asset_code)
+                if (
+                    asset is None
+                    or not asset.is_active
+                    or asset.current_price is None
+                    or asset.current_price <= 0
+                ):
+                    raise IranMarketPurchaseNotAllowedError(asset_code)
+                definition = get_asset_definition(asset_code)
+                if definition is None or definition.category == ASSET_HOUSING:
+                    raise IranMarketPurchaseNotAllowedError(asset_code)
+                total_cost = asset.current_price * quantity
+                if total_cost <= 0 or total_cost > 10**18:
+                    raise IranMarketPurchaseError("purchase total is out of range")
+
+                logger.info(
+                    "Iran market purchase attempt: player=%s asset=%s quantity=%s price=%s",
+                    player_id,
+                    asset_code,
+                    quantity,
+                    asset.current_price,
+                )
+                wallet_result = await self._money.remove_money_in_transaction(
+                    session, player_id, total_cost
+                )
+                try:
+                    holding = await IranMarketHoldingRepository(session).add_quantity(
+                        player_id=player_id,
+                        asset_id=asset.id,
+                        quantity=quantity,
+                    )
+                    await session.commit()
+                except IntegrityError as exc:
+                    await session.rollback()
+                    logger.error(
+                        "Iran market purchase database conflict: player=%s asset=%s",
+                        player_id,
+                        asset_code,
+                    )
+                    raise IranMarketPurchaseError(asset_code) from exc
+
+                result = IranMarketPurchaseResult(
+                    asset=self._to_asset_data(asset),
+                    quantity=quantity,
+                    total_cost=total_cost,
+                    wallet_balance_after=wallet_result.balance_after,
+                    holding=self._to_holding_data(holding, asset),
+                )
+                logger.info(
+                    "Iran market purchase successful: player=%s asset=%s quantity=%s total=%s",
+                    player_id,
+                    asset_code,
+                    quantity,
+                    total_cost,
+                )
+                return result
 
     # --- Scheduled update --------------------------------------------------
 
@@ -544,6 +659,18 @@ class IranMarketService:
             ),
             created_at=_as_utc(asset.created_at) or _utc_now(),
             updated_at=_as_utc(asset.updated_at) or _utc_now(),
+        )
+
+    @staticmethod
+    def _to_holding_data(holding, asset) -> IranMarketHoldingData:
+        definition = get_asset_definition(asset.code)
+        if definition is None:
+            raise IranMarketAssetNotFoundError(asset.code)
+        return IranMarketHoldingData(
+            asset_code=asset.code,
+            display_name=asset.display_name,
+            quantity=holding.quantity,
+            unit_label=definition.unit_label,
         )
 
     @staticmethod

@@ -11,6 +11,41 @@ from app.database.database import Database
 from app.database.repositories.job_repository import JobRepository
 
 
+def _create_old_schema_marketplace(db_path: str) -> None:
+    """Create the pre-car marketplace table with one legacy listing."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE marketplace_listings (
+            id INTEGER NOT NULL PRIMARY KEY,
+            seller_player_id BIGINT NOT NULL,
+            asset_type VARCHAR(16) NOT NULL,
+            asset_id BIGINT NOT NULL,
+            price BIGINT NOT NULL,
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            buyer_player_id BIGINT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            sold_at DATETIME,
+            cancelled_at DATETIME,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT ck_marketplace_listings_positive_price CHECK (price > 0),
+            CONSTRAINT ck_marketplace_listings_positive_asset_id CHECK (asset_id > 0),
+            CONSTRAINT ck_marketplace_listings_supported_asset_type
+                CHECK (asset_type IN ('house', 'land')),
+            CONSTRAINT ck_marketplace_listings_status
+                CHECK (status IN ('active', 'sold', 'cancelled'))
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO marketplace_listings "
+        "(id, seller_player_id, asset_type, asset_id, price) "
+        "VALUES (1, 42, 'house', 7, 1000)"
+    )
+    conn.commit()
+    conn.close()
+
+
 def _create_old_schema_jobs(db_path: str) -> None:
     """Recreate the pre-update ``jobs`` table shape (no hourly_salary/employer)."""
     conn = sqlite3.connect(db_path)
@@ -35,6 +70,37 @@ def _create_old_schema_jobs(db_path: str) -> None:
     )
     conn.commit()
     conn.close()
+
+
+async def test_existing_marketplace_rows_survive_car_constraint_migration(tmp_path):
+    db_path = tmp_path / "old-marketplace.db"
+    _create_old_schema_marketplace(db_path.as_posix())
+
+    database = Database(f"sqlite+aiosqlite:///{db_path.as_posix()}")
+    try:
+        await database.create_all()
+        async with database.engine.begin() as connection:
+            rows = (
+                await connection.exec_driver_sql(
+                    "SELECT id, asset_type, asset_id, price "
+                    "FROM marketplace_listings ORDER BY id"
+                )
+            ).all()
+            await connection.exec_driver_sql(
+                "INSERT INTO marketplace_listings "
+                "(seller_player_id, asset_type, asset_id, price) "
+                "VALUES (42, 'car', 9, 2000)"
+            )
+            car_count = (
+                await connection.exec_driver_sql(
+                    "SELECT COUNT(*) FROM marketplace_listings WHERE asset_type = 'car'"
+                )
+            ).scalar_one()
+
+        assert rows == [(1, "house", 7, 1000)]
+        assert car_count == 1
+    finally:
+        await database.dispose()
 
 
 async def test_existing_database_gains_new_job_columns(tmp_path):

@@ -1,7 +1,8 @@
 """Service layer for the player-to-player ``🧱 دیوار ایران`` marketplace.
 
-Only existing, owned houses and unbuilt land parcels can be listed. The
-marketplace stores references to those rows, never copies their attributes.
+Only existing, owned houses, unbuilt land parcels, and fixed-catalog cars
+can be listed. The marketplace stores references to those rows, never copies
+their attributes.
 Every purchase uses the existing MoneyService inside one transaction with the
 conditional asset/listing updates, so payment, ownership and sale state either
 all commit or all roll back.
@@ -20,6 +21,10 @@ from app.database.models.house import House
 from app.database.models.house_transaction import TX_PLAYER_PURCHASE
 from app.database.models.land import Land
 from app.database.models.marketplace_listing import MarketplaceListing
+from app.database.models.vehicle_ownership import (
+    VEHICLE_OWNERSHIP_OWNED,
+    VehicleOwnership,
+)
 from app.database.repositories.construction_project_repository import (
     ConstructionProjectRepository,
 )
@@ -38,11 +43,16 @@ from app.database.repositories.marketplace_listing_repository import (
 )
 from app.database.repositories.player_repository import PlayerRepository
 from app.database.repositories.rental_contract_repository import RentalContractRepository
+from app.database.repositories.vehicle_repository import (
+    VehicleModelRepository,
+    VehicleOwnershipRepository,
+)
 from app.database.repositories.renovation_project_repository import (
     RenovationProjectRepository,
 )
 from app.game.housing.dto import HouseData
 from app.game.marketplace.catalog import (
+    ASSET_TYPE_CAR,
     ASSET_TYPE_HOUSE,
     ASSET_TYPE_LAND,
     LISTING_STATUS_ACTIVE,
@@ -59,9 +69,11 @@ from app.game.marketplace.dto import (
 )
 from app.game.realestate.dto import LandData
 from app.game.shared.errors import DomainError, PlayerNotFoundError
+from app.game.vehicle.dto import VehicleOwnershipData
 from app.services.housing_service import HousingService
 from app.services.money_service import MoneyService
 from app.services.realestate_service import RealEstateService
+from app.services.vehicle_service import VehicleService
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +198,23 @@ class DivarService:
                         label=f"🌍 زمین #{land.id} — {land.city}، {land.neighborhood}",
                         location=f"{land.city}، {land.neighborhood}",
                         area_sqm=land.area_sqm,
+                    )
+                )
+
+            for ownership, model in await VehicleOwnershipRepository(session).list_owned_with_models(
+                player_id
+            ):
+                if not VehicleService._is_fixed_model(model):
+                    continue
+                if await marketplace.get_active_by_asset(ASSET_TYPE_CAR, ownership.id):
+                    continue
+                assets.append(
+                    MarketplaceOwnedAssetData(
+                        asset_type=ASSET_TYPE_CAR,
+                        asset_id=ownership.id,
+                        label=f"🚗 {model.name} — مالکیت #{ownership.id}",
+                        location="",
+                        area_sqm=None,
                     )
                 )
             return assets
@@ -360,12 +389,26 @@ class DivarService:
             if listing.seller_player_id == buyer_player_id:
                 raise MarketplaceCannotBuyOwnListingError(str(listing_id))
 
-            await self._load_transferable_asset(
+            transferable = await self._load_transferable_asset(
                 session,
                 seller_player_id=listing.seller_player_id,
                 asset_type=listing.asset_type,
                 asset_id=listing.asset_id,
             )
+            if listing.asset_type == ASSET_TYPE_CAR:
+                # The dealership's existing partial unique index allows only
+                # one owned row per buyer/model. Reject this before charging
+                # the buyer instead of relying on an IntegrityError later.
+                assert isinstance(transferable, VehicleOwnership)
+                already_owned = await VehicleOwnershipRepository(
+                    session
+                ).get_owned_by_player_and_model(
+                    buyer_player_id, transferable.vehicle_model_id
+                )
+                if already_owned is not None:
+                    raise MarketplaceAssetNotTransferableError(
+                        "buyer already owns this vehicle model"
+                    )
 
             # These calls only stage SQL in this session. The outer service
             # owns commit/rollback, so an ownership or listing race rolls the
@@ -381,8 +424,12 @@ class DivarService:
                 transferred = await HouseRepository(session).transfer_owner_if(
                     listing.asset_id, listing.seller_player_id, buyer_player_id
                 )
-            else:
+            elif listing.asset_type == ASSET_TYPE_LAND:
                 transferred = await LandRepository(session).transfer_owner_if(
+                    listing.asset_id, listing.seller_player_id, buyer_player_id
+                )
+            else:
+                transferred = await VehicleOwnershipRepository(session).transfer_owner_if(
                     listing.asset_id, listing.seller_player_id, buyer_player_id
                 )
             if not transferred:
@@ -409,7 +456,7 @@ class DivarService:
                     house_id=listing.asset_id,
                     note=f"خرید خانه #{listing.asset_id} از دیوار ایران",
                 )
-            else:
+            elif listing.asset_type == ASSET_TYPE_LAND:
                 await LandTransactionRepository(session).create(
                     payer_player_id=buyer_player_id,
                     payee_player_id=listing.seller_player_id,
@@ -417,6 +464,12 @@ class DivarService:
                     transaction_type="player_sale",
                     land_id=listing.asset_id,
                     note=f"خرید زمین #{listing.asset_id} از دیوار ایران",
+                )
+            else:
+                logger.info(
+                    "Divar car ownership transfer staged: ownership=%s buyer=%s",
+                    listing.asset_id,
+                    buyer_player_id,
                 )
 
             await session.commit()
@@ -464,7 +517,7 @@ class DivarService:
         seller_player_id: int,
         asset_type: str,
         asset_id: int,
-    ) -> House | Land:
+    ) -> House | Land | VehicleOwnership:
         self._validate_asset_reference(asset_type, asset_id)
         if asset_type == ASSET_TYPE_HOUSE:
             house = await HouseRepository(session).get_by_id(asset_id)
@@ -484,6 +537,21 @@ class DivarService:
             if attached.scalar_one_or_none() is not None:
                 raise MarketplaceAssetNotTransferableError("constructed house")
             return house
+
+        if asset_type == ASSET_TYPE_CAR:
+            ownership = await VehicleOwnershipRepository(session).get_by_id(asset_id)
+            if ownership is None:
+                raise MarketplaceAssetNotFoundError(str(asset_id))
+            if ownership.owner_player_id != seller_player_id:
+                raise MarketplaceAssetNotOwnedError(str(asset_id))
+            if ownership.status != VEHICLE_OWNERSHIP_OWNED:
+                raise MarketplaceAssetNotTransferableError("inactive vehicle")
+            model = await VehicleModelRepository(session).get_by_id(
+                ownership.vehicle_model_id
+            )
+            if model is None or not VehicleService._is_fixed_model(model):
+                raise MarketplaceAssetNotFoundError(str(asset_id))
+            return ownership
 
         land = await LandRepository(session).get_by_id(asset_id)
         if land is None:
@@ -508,10 +576,12 @@ class DivarService:
             raise MarketplaceAssetNotFoundError(str(listing.seller_player_id))
         house: HouseData | None = None
         land: LandData | None = None
+        vehicle: VehicleOwnershipData | None = None
         if listing.asset_type == ASSET_TYPE_HOUSE:
             asset = await HouseRepository(session).get_by_id(listing.asset_id)
             if asset is None:
                 raise MarketplaceAssetNotFoundError(str(listing.asset_id))
+            await session.refresh(asset)
             if require_active_owner and asset.owner_player_id != listing.seller_player_id:
                 raise MarketplaceAssetNotOwnedError(str(listing.asset_id))
             house = HousingService._to_house_dto(asset)
@@ -519,9 +589,31 @@ class DivarService:
             asset = await LandRepository(session).get_by_id(listing.asset_id)
             if asset is None:
                 raise MarketplaceAssetNotFoundError(str(listing.asset_id))
+            await session.refresh(asset)
             if require_active_owner and asset.owner_player_id != listing.seller_player_id:
                 raise MarketplaceAssetNotOwnedError(str(listing.asset_id))
             land = RealEstateService._to_land_dto(asset)
+        elif listing.asset_type == ASSET_TYPE_CAR:
+            ownership = await VehicleOwnershipRepository(session).get_by_id(
+                listing.asset_id
+            )
+            if ownership is None:
+                raise MarketplaceAssetNotFoundError(str(listing.asset_id))
+            await session.refresh(ownership)
+            if (
+                require_active_owner
+                and (
+                    ownership.owner_player_id != listing.seller_player_id
+                    or ownership.status != VEHICLE_OWNERSHIP_OWNED
+                )
+            ):
+                raise MarketplaceAssetNotOwnedError(str(listing.asset_id))
+            model = await VehicleModelRepository(session).get_by_id(
+                ownership.vehicle_model_id
+            )
+            if model is None or not VehicleService._is_fixed_model(model):
+                raise MarketplaceAssetNotFoundError(str(listing.asset_id))
+            vehicle = VehicleService._to_ownership_dto(ownership, model)
         else:
             raise MarketplaceAssetNotFoundError(listing.asset_type)
         return MarketplaceListingData(
@@ -537,4 +629,5 @@ class DivarService:
             buyer_player_id=listing.buyer_player_id,
             house=house,
             land=land,
+            vehicle=vehicle,
         )

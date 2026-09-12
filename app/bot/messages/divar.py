@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.bot.messages.formatters import fa_int, money
 from app.bot.messages.housing import house_card
 from app.game.marketplace.catalog import (
+    ASSET_TYPE_CAR,
     ASSET_TYPE_HOUSE,
     ASSET_TYPE_LAND,
     CATEGORY_LABELS,
@@ -27,7 +28,7 @@ def divar_menu_text() -> str:
         "🧱 دیوار ایران\n"
         "━━━━━━━━━━━━━━━\n"
         "اینجا بازیکن‌ها دارایی واقعی‌شون رو به هم می‌فروشن.\n"
-        "فقط خانه و زمینِ مالک‌شده قابل ثبت آگهی هستن؛ اطلاعات هر آگهی از خود ملک خوانده می‌شه.\n\n"
+        "خانه، زمین و ماشینِ مالک‌شده قابل ثبت آگهی هستن؛ اطلاعات هر آگهی از دارایی واقعی خوانده می‌شه.\n\n"
         "یکی از گزینه‌های پایین رو انتخاب کن 👇"
     )
 
@@ -38,7 +39,8 @@ def categories_text() -> str:
         "━━━━━━━━━━━━━━━\n"
         "در این نسخه فقط دارایی‌هایی نمایش داده می‌شن که واقعاً در بازی وجود دارن:\n"
         "🏠 خانه\n"
-        "🌍 زمین"
+        "🌍 زمین\n"
+        "🚗 ماشین"
     )
 
 
@@ -71,6 +73,8 @@ def results_text(result: MarketplaceSearchResult, state: MarketplaceFilterState)
         filters.append("خانه")
     elif criteria.asset_type == ASSET_TYPE_LAND:
         filters.append("زمین")
+    elif criteria.asset_type == ASSET_TYPE_CAR:
+        filters.append("ماشین")
     if criteria.city:
         filters.append(criteria.city)
     if criteria.neighborhood:
@@ -111,6 +115,14 @@ def listing_detail_text(listing: MarketplaceListingData) -> str:
                 f"⭐ کیفیت موقعیت: {land.location_quality}",
             ]
         )
+    elif listing.vehicle is not None:
+        lines.extend(
+            [
+                f"🚗 ماشین: {listing.vehicle.model.name}",
+                f"🆔 شناسه مالکیت: {fa_int(listing.vehicle.ownership_id)}",
+                f"📌 وضعیت مالکیت: {'فعال ✅' if listing.vehicle.is_owned else 'غیرفعال 🔒'}",
+            ]
+        )
     lines.extend(
         [
             "━━━━━━━━━━━━━━━",
@@ -128,7 +140,7 @@ def owned_assets_text(assets: list[MarketplaceOwnedAssetData]) -> str:
     if not assets:
         return (
             "دارایی قابل ثبت آگهی پیدا نشد.\n\n"
-            "خانه یا زمین باید واقعاً به نام تو باشد، آگهی فعال دیگری نداشته باشد و درگیر اجاره/ساخت نباشد."
+            "خانه، زمین یا ماشین باید واقعاً به نام تو باشد و آگهی فعال دیگری نداشته باشد."
         )
     return (
         "➕ ثبت آگهی\n"

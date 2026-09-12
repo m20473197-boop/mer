@@ -12,6 +12,7 @@ from app.database.models.family_history import FamilyHistory
 from app.database.models.house import House
 from app.database.models.iran_market_asset import IranMarketAsset
 from app.database.models.iran_market_price_history import IranMarketPriceHistory
+from app.database.models.iran_market_holding import IranMarketHolding
 from app.database.models.iran_market_update_state import IranMarketUpdateState
 from app.database.models.house_listing import HouseListing
 from app.database.models.house_sale import HouseSale
@@ -58,6 +59,7 @@ __all__ = [
     "House",
     "IranMarketAsset",
     "IranMarketPriceHistory",
+    "IranMarketHolding",
     "IranMarketUpdateState",
     "HouseListing",
     "HouseSale",

@@ -32,7 +32,7 @@ from app.bot.messages import errors as error_messages
 from app.core import constants
 from app.game.admin.parsing import parse_admin_float, parse_admin_int
 from app.game.housing.catalog import CITY_BASE_PRICE_PER_SQM
-from app.game.marketplace.catalog import ASSET_TYPE_HOUSE, ASSET_TYPE_LAND
+from app.game.marketplace.catalog import ASSET_TYPE_CAR, ASSET_TYPE_HOUSE, ASSET_TYPE_LAND
 from app.game.marketplace.dto import MarketplaceFilterState, MarketplaceSearchCriteria
 from app.game.marketplace.search import (
     merge_search_with_filters,
@@ -382,7 +382,7 @@ async def show_filter_category(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     await query.answer()
     category = query.data[len(callbacks.DIVAR_FILTER_CATEGORY_PREFIX) :]
-    if category not in (ASSET_TYPE_HOUSE, ASSET_TYPE_LAND):
+    if category not in (ASSET_TYPE_HOUSE, ASSET_TYPE_LAND, ASSET_TYPE_CAR):
         await _edit(query, error_messages.UNKNOWN_ACTION, build_divar_filters(_current_state(context)))
         return
     state = _current_state(context)
@@ -456,6 +456,9 @@ async def start_listing_price(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif data.startswith(callbacks.DIVAR_SELL_LAND_PREFIX):
         asset_type = ASSET_TYPE_LAND
         raw_id = data[len(callbacks.DIVAR_SELL_LAND_PREFIX) :]
+    elif data.startswith(callbacks.DIVAR_SELL_CAR_PREFIX):
+        asset_type = ASSET_TYPE_CAR
+        raw_id = data[len(callbacks.DIVAR_SELL_CAR_PREFIX) :]
     else:
         return ConversationHandler.END
     try:

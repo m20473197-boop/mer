@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.keyboards import callbacks
 from app.bot.keyboards.main_menu import BUTTON_BACK_TO_MAIN
-from app.game.market.catalog import IRAN_MARKET_ASSET_CATALOG
+from app.game.market.catalog import ASSET_HOUSING, IRAN_MARKET_ASSET_CATALOG
 from app.game.market.dto import IranMarketAssetData
 
 
@@ -41,8 +41,24 @@ def build_iran_market_menu(
     return InlineKeyboardMarkup(rows)
 
 
-def build_iran_market_detail() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def build_iran_market_detail(
+    asset: IranMarketAssetData | None = None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if (
+        asset is not None
+        and asset.category != ASSET_HOUSING
+        and asset.current_price is not None
+    ):
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    "🛒 خرید",
+                    callback_data=f"{callbacks.MARKET_BUY_PREFIX}{asset.code}",
+                )
+            ]
+        )
+    rows.extend(
         [
             [
                 InlineKeyboardButton(
@@ -56,6 +72,7 @@ def build_iran_market_detail() -> InlineKeyboardMarkup:
             ],
         ]
     )
+    return InlineKeyboardMarkup(rows)
 
 
 def _emoji(category: str) -> str:

@@ -12,7 +12,7 @@ from dataclasses import replace
 
 from app.game.admin.parsing import parse_admin_float, parse_admin_int
 from app.game.housing.catalog import CITY_BASE_PRICE_PER_SQM, CITY_NEIGHBORHOODS
-from app.game.marketplace.catalog import ASSET_TYPE_HOUSE, ASSET_TYPE_LAND
+from app.game.marketplace.catalog import ASSET_TYPE_CAR, ASSET_TYPE_HOUSE, ASSET_TYPE_LAND
 from app.game.marketplace.dto import MarketplaceSearchCriteria
 
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "0123456789" * 2)
@@ -44,6 +44,9 @@ _STOP_WORDS = {
     "اتاق",
     "سال",
     "ساخت",
+    "ماشین",
+    "خودرو",
+    "اتومبیل",
 }
 
 
@@ -136,6 +139,8 @@ def parse_search_query(query: str) -> MarketplaceSearchCriteria:
         asset_type = ASSET_TYPE_LAND
     elif any(word in text for word in ("خانه", "مسکن", "آپارتمان", "ملک")):
         asset_type = ASSET_TYPE_HOUSE
+    elif any(word in text for word in ("ماشین", "خودرو", "اتومبیل")):
+        asset_type = ASSET_TYPE_CAR
 
     cities, neighborhoods = _known_locations()
     city = _canonical_match(text, cities)
@@ -234,6 +239,9 @@ def parse_search_query(query: str) -> MarketplaceSearchCriteria:
         "خوب",
         "متوسط",
         "ضعیف",
+        "ماشین",
+        "خودرو",
+        "اتومبیل",
     ]:
         text = text.replace(normalize_persian(known), " ")
     text = re.sub(r"\d[\d,]*", " ", text)

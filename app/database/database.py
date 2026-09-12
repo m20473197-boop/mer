@@ -105,8 +105,11 @@ class Database:
             await connection.run_sync(Base.metadata.create_all)
         if self._database_url.startswith(_SQLITE_PREFIX):
             await self._rename_columns()
+            await self._migrate_marketplace_car_constraint()
             await self._add_missing_columns()
             await self._convert_building_ages_to_construction_years()
+        elif self._database_url.startswith("postgresql"):
+            await self._migrate_postgresql_marketplace_car_constraint()
 
     async def _rename_columns(self) -> None:
         """Rename columns on existing SQLite tables (idempotent)."""
@@ -152,6 +155,92 @@ class Database:
                     converted,
                     current_year,
                 )
+
+    async def _migrate_marketplace_car_constraint(self) -> None:
+        """Expand an older SQLite marketplace table without losing listings."""
+        async with self._engine.begin() as connection:
+            result = await connection.exec_driver_sql(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'marketplace_listings'"
+            )
+            row = result.first()
+            table_sql = row[0] if row else ""
+            if not table_sql or "'car'" in table_sql:
+                return
+
+            # SQLite cannot alter a CHECK constraint in place. Copy every
+            # existing row into the same schema with the expanded constraint,
+            # then recreate the known indexes. No listing data is discarded.
+            await connection.exec_driver_sql(
+                """
+                CREATE TABLE marketplace_listings_migrated (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    seller_player_id BIGINT NOT NULL,
+                    asset_type VARCHAR(16) NOT NULL,
+                    asset_id BIGINT NOT NULL,
+                    price BIGINT NOT NULL,
+                    status VARCHAR(16) NOT NULL DEFAULT 'active',
+                    buyer_player_id BIGINT,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    sold_at DATETIME,
+                    cancelled_at DATETIME,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT ck_marketplace_listings_positive_price CHECK (price > 0),
+                    CONSTRAINT ck_marketplace_listings_positive_asset_id CHECK (asset_id > 0),
+                    CONSTRAINT ck_marketplace_listings_supported_asset_type
+                        CHECK (asset_type IN ('house', 'land', 'car')),
+                    CONSTRAINT ck_marketplace_listings_status
+                        CHECK (status IN ('active', 'sold', 'cancelled')),
+                    FOREIGN KEY (seller_player_id) REFERENCES players (id) ON DELETE CASCADE,
+                    FOREIGN KEY (buyer_player_id) REFERENCES players (id) ON DELETE SET NULL
+                )
+                """
+            )
+            await connection.exec_driver_sql(
+                """
+                INSERT INTO marketplace_listings_migrated
+                (id, seller_player_id, asset_type, asset_id, price, status,
+                 buyer_player_id, created_at, sold_at, cancelled_at, updated_at)
+                SELECT id, seller_player_id, asset_type, asset_id, price, status,
+                       buyer_player_id, created_at, sold_at, cancelled_at, updated_at
+                FROM marketplace_listings
+                """
+            )
+            await connection.exec_driver_sql("DROP TABLE marketplace_listings")
+            await connection.exec_driver_sql(
+                "ALTER TABLE marketplace_listings_migrated RENAME TO marketplace_listings"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX ix_marketplace_listings_seller_player_id "
+                "ON marketplace_listings (seller_player_id)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE UNIQUE INDEX uq_marketplace_active_asset "
+                "ON marketplace_listings (asset_type, asset_id) "
+                "WHERE status = 'active'"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX ix_marketplace_active_created "
+                "ON marketplace_listings (status, asset_type, created_at)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX ix_marketplace_seller_status "
+                "ON marketplace_listings (seller_player_id, status)"
+            )
+            logger.info("Migrated marketplace_listings to support car assets")
+
+    async def _migrate_postgresql_marketplace_car_constraint(self) -> None:
+        """Expand the marketplace asset CHECK on existing PostgreSQL databases."""
+        async with self._engine.begin() as connection:
+            await connection.exec_driver_sql(
+                "ALTER TABLE marketplace_listings "
+                "DROP CONSTRAINT IF EXISTS ck_marketplace_listings_supported_asset_type"
+            )
+            await connection.exec_driver_sql(
+                "ALTER TABLE marketplace_listings "
+                "ADD CONSTRAINT ck_marketplace_listings_supported_asset_type "
+                "CHECK (asset_type IN ('house', 'land', 'car'))"
+            )
 
     async def _add_missing_columns(self) -> None:
         """Backfill new columns on existing SQLite tables (idempotent)."""

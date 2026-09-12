@@ -17,6 +17,8 @@ from app.game.market.catalog import (
 from app.game.market.dto import (
     IranMarketAssetData,
     IranMarketHistoryData,
+    IranMarketHoldingData,
+    IranMarketPurchaseResult,
     IranMarketSnapshotData,
     MarketUpdateResult,
 )
@@ -41,6 +43,8 @@ __all__ = [
     "IranMarketAssetDefinition",
     "IranMarketAssetData",
     "IranMarketHistoryData",
+    "IranMarketHoldingData",
+    "IranMarketPurchaseResult",
     "IranMarketSnapshotData",
     "MarketUpdateResult",
     "MarketDataError",
