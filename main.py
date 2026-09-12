@@ -85,6 +85,13 @@ def build_application(
             logger.info("Vehicle catalog ensured: %s models", len(vehicles))
         except Exception as exc:
             logger.warning("Could not seed the vehicle catalog: %s", type(exc).__name__)
+        # The crime worker only settles already-persisted operations; it does
+        # not create any gameplay rows during startup.
+        try:
+            await services.crime.process_due_operations()
+            await services.crime.start_scheduler()
+        except Exception as exc:
+            logger.warning("Could not start crime settlement: %s", type(exc).__name__)
         # Seed the admin-panel economy catalog and refresh the runtime cache
         # (market conditions, inflation, events, reward settings, flags).
         try:
@@ -95,6 +102,7 @@ def build_application(
             logger.warning("Could not seed the economy catalog: %s", exc)
 
     async def on_shutdown(application: Application) -> None:
+        await services.crime.stop_scheduler()
         await services.market.stop_scheduler()
         await services.bank.stop_interest_scheduler()
         await database.dispose()

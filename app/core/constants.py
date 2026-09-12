@@ -256,6 +256,11 @@ VEHICLE_PAGE_SIZE: int = 6
 VEHICLE_OWNERSHIP_LIMIT: int | None = None
 
 # ============================================================================
+# 🕳️ خلاف — fictional activity menu
+# ============================================================================
+CRIME_TEXT_TRIGGER_ALIASES: tuple[str, ...] = ("خلاف", "🕳️ خلاف")
+
+# ============================================================================
 # Marriage and Family system
 # ============================================================================
 # Every family rule lives here so the whole system can be re-balanced from one

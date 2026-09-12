@@ -18,6 +18,7 @@ from app.bot.handlers import (
     admin_panel,
     bank,
     business,
+    crime,
     divar,
     family,
     housing,
@@ -239,12 +240,64 @@ def register_handlers(application: Application) -> None:
         )
     )
 
+    # 🕳️ خلاف — target replies and laundering amounts are translated here;
+    # every rule, cooldown and money mutation remains in CrimeService.
+    application.add_handler(
+        ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(
+                    crime.start_information,
+                    pattern=rf"^{callbacks.CRIME_INFORMATION}$",
+                ),
+                CallbackQueryHandler(
+                    crime.start_bank_hack,
+                    pattern=rf"^{callbacks.CRIME_BANK_HACK}$",
+                ),
+                CallbackQueryHandler(
+                    crime.start_laundering,
+                    pattern=rf"^{callbacks.CRIME_LAUNDERING}$",
+                ),
+            ],
+            states={
+                crime.CRIME_TARGET_STATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        crime.target_input_received,
+                    )
+                ],
+                crime.CRIME_AMOUNT_STATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        crime.amount_input_received,
+                    )
+                ],
+            },
+            fallbacks=[
+                CallbackQueryHandler(
+                    crime.cancel_crime_input,
+                    pattern=rf"^{callbacks.CRIME_CANCEL}$",
+                )
+            ],
+            name="crime_input",
+            persistent=False,
+            allow_reentry=True,
+        )
+    )
+
     # 🏦 بانک ایران — text entry opens the persistent bank menu. It is
     # registered after the input conversation so pending amounts/cards win.
     application.add_handler(
         MessageHandler(
             filters.TEXT & filters.Regex(bank.BANK_TEXT_PATTERN),
             bank.bank_text_handler,
+        )
+    )
+
+    # 🕳️ خلاف — شوتی is not exposed by a separate text/main-menu route.
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Regex(crime.CRIME_TEXT_PATTERN),
+            crime.crime_text_handler,
         )
     )
 
@@ -488,6 +541,44 @@ def register_handlers(application: Application) -> None:
             bank.show_bank_history_page,
             pattern=rf"^{callbacks.BANK_HISTORY_PAGE_PREFIX}\d+$",
         )
+    )
+
+    # 🕳️ خلاف callbacks — all specific routes are before the unknown fallback.
+    application.add_handler(
+        CallbackQueryHandler(crime.show_crime_menu, pattern=rf"^{callbacks.CRIME_MENU}$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(crime.show_documents, pattern=rf"^{callbacks.CRIME_DOCUMENTS}$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            crime.issue_document,
+            pattern=rf"^{callbacks.CRIME_DOCUMENT_PREFIX}[a-z_]+$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(crime.show_shoti, pattern=rf"^{callbacks.CRIME_SHOTI}$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            crime.start_shoti_vehicle,
+            pattern=rf"^{callbacks.CRIME_SHOTI_VEHICLE_PREFIX}\d+$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            crime.show_shoti_history,
+            pattern=rf"^{callbacks.CRIME_SHOTI_HISTORY}$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            crime.show_laundering_history,
+            pattern=rf"^{callbacks.CRIME_LAUNDERING_HISTORY}$",
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(crime.show_crime_history, pattern=rf"^{callbacks.CRIME_HISTORY}$")
     )
 
     # Iran Market callbacks — read stored prices only.

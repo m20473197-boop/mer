@@ -16,6 +16,7 @@ from app.database.repositories.bank_account_repository import BankAccountReposit
 from app.services.admin_service import AdminService
 from app.services.bank_service import BankService
 from app.services.business_service import BusinessService
+from app.services.crime_service import CrimeService
 from app.services.divar_service import DivarService
 from app.services.family_service import FamilyService
 from app.services.housing_service import HousingService
@@ -34,6 +35,7 @@ __all__ = [
     "AdminService",
     "BankService",
     "BusinessService",
+    "CrimeService",
     "DivarService",
     "PlayerService",
     "LevelService",
@@ -82,6 +84,13 @@ class ServiceRegistry:
         self.vehicles = VehicleService(
             session_factory, money_service=self.money
         )
+        self.crime = CrimeService(
+            session_factory,
+            money_service=self.money,
+            bank_service=self.bank,
+            vehicle_service=self.vehicles,
+        )
+        self.crimes = self.crime
         # Car/vehicle aliases keep the service discoverable without creating
         # another implementation or wallet boundary.
         self.cars = self.vehicles

@@ -6,7 +6,13 @@ from app.database.models.bank_account import BankAccount
 from app.database.models.bank_transaction import BankTransaction
 from app.database.models.bot_setting import BotSetting
 from app.database.models.business import Business
+from app.database.models.bank_hack_attempt import BankHackAttempt
 from app.database.models.child import Child
+from app.database.models.crime_activity import CrimeActivity
+from app.database.models.fake_document import FakeDocument
+from app.database.models.information_selling_operation import InformationSellingOperation
+from app.database.models.money_laundering_operation import MoneyLaunderingOperation
+from app.database.models.shoti_mission import ShotiMission
 from app.database.models.construction_project import ConstructionProject
 from app.database.models.divorce_record import DivorceRecord
 from app.database.models.economic_event import EconomicEvent
@@ -44,6 +50,12 @@ __all__ = [
     "Base",
     "BankAccount",
     "BankTransaction",
+    "BankHackAttempt",
+    "CrimeActivity",
+    "InformationSellingOperation",
+    "MoneyLaunderingOperation",
+    "FakeDocument",
+    "ShotiMission",
     "AdminAuditLog",
     "BotSetting",
     "Business",

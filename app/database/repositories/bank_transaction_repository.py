@@ -75,6 +75,15 @@ class BankTransactionRepository:
         await self._session.flush()
         return transaction
 
+    async def get_by_reference_and_type(
+        self, reference_id: str, transaction_type: str
+    ) -> BankTransaction | None:
+        statement = select(BankTransaction).where(
+            BankTransaction.reference_id == reference_id,
+            BankTransaction.transaction_type == transaction_type,
+        )
+        return (await self._session.execute(statement)).scalar_one_or_none()
+
     async def get_for_account_page(
         self, account_id: int, *, offset: int, limit: int
     ) -> list[BankTransaction]:

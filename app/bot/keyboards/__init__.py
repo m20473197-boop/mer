@@ -8,6 +8,13 @@ from app.bot.keyboards.bank import (
     build_transfer_confirmation,
     build_transfer_recipient_confirmation,
 )
+from app.bot.keyboards.crime import (
+    build_crime_cancel,
+    build_crime_history,
+    build_crime_menu,
+    build_document_menu,
+    build_shoti_vehicle_menu,
+)
 from app.bot.keyboards.business import (
     build_business_list,
     build_business_menu,
@@ -49,6 +56,7 @@ from app.bot.keyboards.housing import (
 )
 from app.bot.keyboards.main_menu import (
     BUTTON_BANK,
+    BUTTON_CRIME,
     BUTTON_BUSINESS,
     BUTTON_DIVAR,
     BUTTON_HOUSING,
@@ -64,6 +72,11 @@ __all__ = [
     "callbacks",
     "build_bank_menu",
     "build_bank_cancel",
+    "build_crime_menu",
+    "build_crime_cancel",
+    "build_crime_history",
+    "build_document_menu",
+    "build_shoti_vehicle_menu",
     "build_bank_history",
     "build_transfer_confirmation",
     "build_transfer_recipient_confirmation",
@@ -92,6 +105,7 @@ __all__ = [
     "build_jobs_list",
     "BUTTON_BUSINESS",
     "BUTTON_BANK",
+    "BUTTON_CRIME",
     "BUTTON_DIVAR",
     "BUTTON_VEHICLE_DEALERSHIP",
     "BUTTON_IRAN_MARKET",

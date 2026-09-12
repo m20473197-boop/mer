@@ -209,6 +209,27 @@ class BankService:
                 raise BankAccountNotFoundError(f"player_id={player_id} has no active account")
             return self._account_data(account)
 
+    async def get_existing_account(
+        self, player_id: int, *, process_interest: bool = False
+    ) -> BankAccountData | None:
+        """Read an account without provisioning one for a legacy player.
+
+        Most user-facing bank flows intentionally use ``get_account`` so the
+        one-account invariant is repaired automatically. Crime hacking uses
+        this strict read because its target must already have an L.I.R account.
+        """
+
+        if process_interest:
+            await self.process_interest_for_player(player_id)
+        async with self._session_factory() as session:
+            player = await PlayerRepository(session).get_by_id(player_id)
+            if player is None:
+                raise PlayerNotFoundError(f"player_id={player_id} not found")
+            account = await BankAccountRepository(session).get_by_player_id(player_id)
+            if account is None or account.status != BANK_ACCOUNT_ACTIVE:
+                return None
+            return self._account_data(account)
+
     async def get_balance(self, player_id: int) -> int:
         return (await self.get_account(player_id)).balance
 
@@ -377,7 +398,13 @@ class BankService:
         normalized = self._validate_card(card_number)
         await self.ensure_account(sender_player_id)
         await self.process_interest_for_player(sender_player_id)
+        reference_id = self._reference_id("TRF", operation_id)
         async with self._operation_lock:
+            existing_result = await self._existing_transfer_result(
+                sender_player_id, normalized, amount, reference_id
+            )
+            if existing_result is not None:
+                return existing_result
             async with self._session_factory() as session:
                 account_repository = BankAccountRepository(session)
                 transaction_repository = BankTransactionRepository(session)
@@ -439,6 +466,75 @@ class BankService:
             amount=amount,
             transaction=sent_data,
             recipient_transaction=received_data,
+        )
+
+    async def _existing_transfer_result(
+        self,
+        sender_player_id: int,
+        normalized_card: str,
+        amount: int,
+        reference_id: str,
+    ) -> BankTransferResult | None:
+        """Return a previously committed transfer for an operation key.
+
+        A retry can arrive after bank balances were committed but before the
+        caller wrote its own outcome row. Returning the original pair of
+        ledger entries prevents that retry from debiting the sender twice.
+        """
+
+        async with self._session_factory() as session:
+            transaction_repository = BankTransactionRepository(session)
+            sent = await transaction_repository.get_by_reference_and_type(
+                reference_id, BANK_TRANSACTION_TRANSFER_SENT
+            )
+            if sent is None:
+                return None
+            sender = await BankAccountRepository(session).get_by_player_id(sender_player_id)
+            recipient = await BankAccountRepository(session).get_by_card_number(normalized_card)
+            received = await transaction_repository.get_by_reference_and_type(
+                reference_id, BANK_TRANSACTION_TRANSFER_RECEIVED
+            )
+            if (
+                sender is None
+                or recipient is None
+                or received is None
+                or sent.sender_player_id != sender_player_id
+                or sent.receiver_player_id != recipient.player_id
+                or sent.amount != amount
+                or received.amount != amount
+            ):
+                raise BankConcurrencyError("operation id belongs to another transfer")
+            return BankTransferResult(
+                sender_account=self._account_data(sender),
+                recipient_account=self._account_data(recipient),
+                amount=amount,
+                transaction=self._transaction_data(sent),
+                recipient_transaction=self._transaction_data(received),
+            )
+
+    async def transfer_to_player(
+        self,
+        sender_player_id: int,
+        recipient_player_id: int,
+        amount: int,
+        *,
+        operation_id: str | None = None,
+    ) -> BankTransferResult:
+        """Transfer between players while keeping card resolution in BankService.
+
+        Crime activities use this server-side variant so they never need to
+        fabricate or bypass card numbers. The same conditional debit, paired
+        ledger rows, and transaction lock as a normal card transfer apply.
+        """
+
+        if sender_player_id == recipient_player_id:
+            raise BankSelfTransferError("sender and recipient must differ")
+        recipient = await self.get_account(recipient_player_id, process_interest=False)
+        return await self.transfer(
+            sender_player_id,
+            recipient.card_number,
+            amount,
+            operation_id=operation_id,
         )
 
     # ------------------------------------------------------------------

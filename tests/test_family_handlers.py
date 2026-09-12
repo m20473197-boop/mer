@@ -143,6 +143,7 @@ async def test_existing_main_menu_keyboard_is_untouched(services, db, monkeypatc
         callbacks.BUSINESS_MENU,
         callbacks.MARKET_MENU,
         callbacks.BANK_MENU,
+        callbacks.CRIME_MENU,
         callbacks.DIVAR_MENU,
         callbacks.VEHICLE_MENU,
         callbacks.HOUSING_MENU,

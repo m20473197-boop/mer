@@ -19,6 +19,7 @@ BUTTON_JOBS: str = f"💼 {constants.JOBS_SYSTEM_NAME}"
 BUTTON_BUSINESS: str = "🏪 کسب‌وکار"
 BUTTON_IRAN_MARKET: str = f"📈 {constants.IRAN_MARKET_SYSTEM_NAME}"
 BUTTON_BANK: str = f"🏦 {constants.BANK_SYSTEM_NAME}"
+BUTTON_CRIME: str = "🕳️ خلاف"
 BUTTON_DIVAR: str = f"🧱 {constants.DIVAR_SYSTEM_NAME}"
 BUTTON_VEHICLE_DEALERSHIP: str = f"🚗 {constants.VEHICLE_DEALERSHIP_NAME}"
 BUTTON_HOUSING: str = "🏠 خانه"
@@ -64,6 +65,13 @@ def build_main_menu() -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(
                 BUTTON_BANK, callback_data=callbacks.BANK_MENU
+            ),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                BUTTON_CRIME, callback_data=callbacks.CRIME_MENU
             ),
         ]
     )

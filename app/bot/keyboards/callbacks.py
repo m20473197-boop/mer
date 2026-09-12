@@ -38,6 +38,20 @@ BANK_TRANSFER_RECIPIENT_OK: str = "iran_bank_transfer_recipient_ok"
 BANK_TRANSFER_CONFIRM: str = "iran_bank_transfer_confirm"
 BANK_CANCEL: str = "iran_bank_cancel"
 
+# 🕳️ خلاف — شوتی is intentionally nested here, never a main-menu button.
+CRIME_MENU: str = "crime_menu"
+CRIME_INFORMATION: str = "crime_information"
+CRIME_LAUNDERING: str = "crime_laundering"
+CRIME_DOCUMENTS: str = "crime_documents"
+CRIME_DOCUMENT_PREFIX: str = "crime_document_"
+CRIME_SHOTI: str = "crime_shoti"
+CRIME_SHOTI_VEHICLE_PREFIX: str = "crime_shoti_vehicle_"
+CRIME_SHOTI_HISTORY: str = "crime_shoti_history"
+CRIME_BANK_HACK: str = "crime_bank_hack"
+CRIME_HISTORY: str = "crime_history"
+CRIME_LAUNDERING_HISTORY: str = "crime_laundering_history"
+CRIME_CANCEL: str = "crime_cancel"
+
 # 📈 بازار ایران — the four fixed asset detail screens
 MARKET_MENU: str = "iran_market_menu"
 MARKET_ASSET_PREFIX: str = "iran_market_asset_"
