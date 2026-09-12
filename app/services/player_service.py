@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core import constants
 from app.database.models.player import Player
+from app.database.repositories.bank_account_repository import BankAccountRepository
 from app.database.repositories.player_repository import PlayerRepository
 from app.game.player.dto import ProfileData, RegistrationResult, StatusData
 from app.game.player.progression import get_level_progress
@@ -25,8 +26,17 @@ logger = logging.getLogger(__name__)
 class PlayerService:
     """All player-related use cases."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        bank_account_repository: type[BankAccountRepository] = BankAccountRepository,
+    ) -> None:
         self._session_factory = session_factory
+        # Account provisioning is part of registration itself, not a Telegram
+        # concern. A custom repository can still be injected by integrations,
+        # while the normal standalone service enforces the one-account rule.
+        self._bank_account_repository = bank_account_repository
 
     # --- Use cases ---------------------------------------------------------
 
@@ -43,6 +53,24 @@ class PlayerService:
 
             existing = await repository.get_by_telegram_user_id(telegram_user_id)
             if existing is not None:
+                if self._bank_account_repository is not None:
+                    try:
+                        _, created_account = await self._bank_account_repository(
+                            session
+                        ).ensure_for_player(existing.id)
+                        if created_account:
+                            await session.commit()
+                    except IntegrityError:
+                        # Two first contacts can backfill the same legacy
+                        # player concurrently. The unique player constraint
+                        # is the winner's account; retry the read after the
+                        # losing insert rolls back.
+                        await session.rollback()
+                        _, created_account = await self._bank_account_repository(
+                            session
+                        ).ensure_for_player(existing.id)
+                        if created_account:
+                            await session.commit()
                 return self._existing_result(existing)
 
             player = Player(
@@ -55,6 +83,9 @@ class PlayerService:
             )
             repository.add(player)
             try:
+                await session.flush()
+                if self._bank_account_repository is not None:
+                    await self._bank_account_repository(session).ensure_for_player(player.id)
                 await session.commit()
             except IntegrityError:
                 # Lost a race against a concurrent registration — re-read.
@@ -62,6 +93,12 @@ class PlayerService:
                 winner = await repository.get_by_telegram_user_id(telegram_user_id)
                 if winner is None:
                     raise
+                if self._bank_account_repository is not None:
+                    _, created_account = await self._bank_account_repository(
+                        session
+                    ).ensure_for_player(winner.id)
+                    if created_account:
+                        await session.commit()
                 return self._existing_result(winner)
 
             logger.info(

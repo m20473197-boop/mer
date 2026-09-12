@@ -25,6 +25,19 @@ BUSINESS_MY: str = "business_my"
 BUSINESS_INCOME: str = "business_income"
 BUSINESS_START_PREFIX: str = "business_start_"
 
+# 🏦 بانک ایران — all money-changing operations are confirmed in the service.
+BANK_MENU: str = "iran_bank_menu"
+BANK_BALANCE: str = "iran_bank_balance"
+BANK_CARD: str = "iran_bank_card"
+BANK_DEPOSIT: str = "iran_bank_deposit"
+BANK_WITHDRAW: str = "iran_bank_withdraw"
+BANK_TRANSFER: str = "iran_bank_transfer"
+BANK_HISTORY: str = "iran_bank_history"
+BANK_HISTORY_PAGE_PREFIX: str = "iran_bank_history_page_"
+BANK_TRANSFER_RECIPIENT_OK: str = "iran_bank_transfer_recipient_ok"
+BANK_TRANSFER_CONFIRM: str = "iran_bank_transfer_confirm"
+BANK_CANCEL: str = "iran_bank_cancel"
+
 # 📈 بازار ایران — the four fixed asset detail screens
 MARKET_MENU: str = "iran_market_menu"
 MARKET_ASSET_PREFIX: str = "iran_market_asset_"

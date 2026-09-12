@@ -3,6 +3,8 @@
 from app.database.repositories.admin_audit_log_repository import (
     AdminAuditLogRepository,
 )
+from app.database.repositories.bank_account_repository import BankAccountRepository
+from app.database.repositories.bank_transaction_repository import BankTransactionRepository
 from app.database.repositories.bot_setting_repository import BotSettingRepository
 from app.database.repositories.construction_project_repository import (
     ConstructionProjectRepository,
@@ -66,6 +68,8 @@ from app.database.repositories.xp_transaction_repository import (
 
 __all__ = [
     "PlayerRepository",
+    "BankAccountRepository",
+    "BankTransactionRepository",
     "XPTransactionRepository",
     "LevelUpRepository",
     "JobRepository",

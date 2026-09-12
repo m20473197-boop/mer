@@ -192,6 +192,18 @@ CONSTRUCTION_XP_REASON: str = "تکمیل ساخت ملک"
 CONSTRUCTION_CANCEL_REFUND_PERCENT: int = 70
 
 # ============================================================================
+# 🏦 بانک ایران — separate exact-integer player bank ledger
+# ============================================================================
+BANK_SYSTEM_NAME: str = "بانک ایران"
+BANK_TEXT_TRIGGER_ALIASES: tuple[str, ...] = (
+    BANK_SYSTEM_NAME,
+    "بانک",
+)
+BANK_INTEREST_RATE_PERCENT: int = 3
+BANK_INTEREST_CHECK_SECONDS: int = 60 * 60
+BANK_HISTORY_PAGE_SIZE: int = 6
+
+# ============================================================================
 # 📈 بازار ایران — shared market-price system
 # ============================================================================
 # The player-facing market contains exactly USD, 18k gold, Emami coin and a

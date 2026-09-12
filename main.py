@@ -16,6 +16,7 @@ from telegram import Update
 from telegram.ext import Application, ApplicationBuilder
 
 from app.bot import setup_bot
+from app.core import constants
 from app.core.config import ConfigError, Settings, load_settings
 from app.core.logging import setup_logging
 from app.database.database import Database
@@ -32,6 +33,19 @@ def build_application(
     async def on_startup(application: Application) -> None:
         await database.create_all()
         logger.info("Database initialized (missing tables created, data kept)")
+        # Backfill one persistent bank account/card for every legacy player,
+        # then apply any due interest before the recurring worker starts.
+        try:
+            created_accounts = await services.bank.ensure_all_accounts()
+            interest_results = await services.bank.process_daily_interest()
+            logger.info(
+                "Iran bank initialized: %s accounts created, %s accounts checked for interest",
+                created_accounts,
+                len(interest_results),
+            )
+        except Exception as exc:
+            logger.warning("Could not initialize the Iran bank: %s", type(exc).__name__)
+        await services.bank.start_interest_scheduler(constants.BANK_INTEREST_CHECK_SECONDS)
         # Initialize the four-asset Iranian market and make one automatic
         # first-data attempt. The recurring scheduler is independent of the
         # Telegram handlers and uses the persisted three-day cursor.
@@ -82,6 +96,7 @@ def build_application(
 
     async def on_shutdown(application: Application) -> None:
         await services.market.stop_scheduler()
+        await services.bank.stop_interest_scheduler()
         await database.dispose()
         logger.info("Database connections closed — bot shut down")
 

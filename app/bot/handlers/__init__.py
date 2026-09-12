@@ -16,6 +16,7 @@ from telegram.ext import (
 from app.bot.handlers import (
     admin,
     admin_panel,
+    bank,
     business,
     divar,
     family,
@@ -176,6 +177,74 @@ def register_handlers(application: Application) -> None:
             name="divar_input",
             persistent=False,
             allow_reentry=True,
+        )
+    )
+
+    # 🏦 بانک ایران — amounts and transfer confirmation stay in the
+    # ConversationHandler; handlers only call BankService, never the database.
+    application.add_handler(
+        ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(
+                    bank.start_deposit, pattern=rf"^{callbacks.BANK_DEPOSIT}$"
+                ),
+                CallbackQueryHandler(
+                    bank.start_withdrawal, pattern=rf"^{callbacks.BANK_WITHDRAW}$"
+                ),
+                CallbackQueryHandler(
+                    bank.start_transfer, pattern=rf"^{callbacks.BANK_TRANSFER}$"
+                ),
+            ],
+            states={
+                bank.BANK_AMOUNT_STATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        bank.amount_input_received,
+                    )
+                ],
+                bank.BANK_TRANSFER_CARD_STATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        bank.transfer_card_input_received,
+                    )
+                ],
+                bank.BANK_TRANSFER_RECIPIENT_STATE: [
+                    CallbackQueryHandler(
+                        bank.transfer_recipient_continue,
+                        pattern=rf"^{callbacks.BANK_TRANSFER_RECIPIENT_OK}$",
+                    )
+                ],
+                bank.BANK_TRANSFER_AMOUNT_STATE: [
+                    MessageHandler(
+                        filters.TEXT & ~filters.COMMAND,
+                        bank.transfer_amount_input_received,
+                    )
+                ],
+                bank.BANK_TRANSFER_CONFIRM_STATE: [
+                    CallbackQueryHandler(
+                        bank.confirm_transfer,
+                        pattern=rf"^{callbacks.BANK_TRANSFER_CONFIRM}$",
+                    )
+                ],
+            },
+            fallbacks=[
+                CallbackQueryHandler(
+                    bank.cancel_bank_input,
+                    pattern=rf"^{callbacks.BANK_CANCEL}$",
+                )
+            ],
+            name="iran_bank_input",
+            persistent=False,
+            allow_reentry=True,
+        )
+    )
+
+    # 🏦 بانک ایران — text entry opens the persistent bank menu. It is
+    # registered after the input conversation so pending amounts/cards win.
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Regex(bank.BANK_TEXT_PATTERN),
+            bank.bank_text_handler,
         )
     )
 
@@ -389,6 +458,35 @@ def register_handlers(application: Application) -> None:
         CallbackQueryHandler(
             business.start_business_callback,
             pattern=rf"^{callbacks.BUSINESS_START_PREFIX}[a-z_]+$",
+        )
+    )
+
+    # 🏦 بانک ایران callbacks — operation entry callbacks are owned by the
+    # ConversationHandler above; read-only screens live here.
+    application.add_handler(
+        CallbackQueryHandler(
+            bank.show_bank_menu, pattern=rf"^{callbacks.BANK_MENU}$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            bank.show_bank_balance, pattern=rf"^{callbacks.BANK_BALANCE}$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            bank.show_bank_card, pattern=rf"^{callbacks.BANK_CARD}$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            bank.show_bank_history, pattern=rf"^{callbacks.BANK_HISTORY}$"
+        )
+    )
+    application.add_handler(
+        CallbackQueryHandler(
+            bank.show_bank_history_page,
+            pattern=rf"^{callbacks.BANK_HISTORY_PAGE_PREFIX}\d+$",
         )
     )
 

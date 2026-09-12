@@ -7,6 +7,7 @@ from telegram import InlineKeyboardMarkup
 from app.bot.keyboards import callbacks
 from app.bot.keyboards.main_menu import (
     BUTTON_BACK_TO_MAIN,
+    BUTTON_BANK,
     BUTTON_BUSINESS,
     BUTTON_DIVAR,
     BUTTON_HOUSING,
@@ -33,6 +34,7 @@ def test_main_menu_exposes_only_implemented_features():
         BUTTON_JOBS,
         BUTTON_BUSINESS,
         BUTTON_IRAN_MARKET,
+        BUTTON_BANK,
         BUTTON_DIVAR,
         BUTTON_VEHICLE_DEALERSHIP,
         BUTTON_HOUSING,
@@ -43,6 +45,7 @@ def test_main_menu_exposes_only_implemented_features():
         callbacks.JOBS_MENU,
         callbacks.BUSINESS_MENU,
         callbacks.MARKET_MENU,
+        callbacks.BANK_MENU,
         callbacks.DIVAR_MENU,
         callbacks.VEHICLE_MENU,
         callbacks.HOUSING_MENU,
@@ -52,6 +55,30 @@ def test_main_menu_exposes_only_implemented_features():
     labels = " ".join(b.text for b in buttons).lower()
     for banned in ("جرم", "وسیله", "fromid", "market", "crime", "vehicle"):
         assert banned not in labels
+
+
+def test_bank_menu_exposes_the_six_requested_actions():
+    from app.bot.keyboards import build_bank_menu
+
+    buttons = _flat_buttons(build_bank_menu())
+    texts = {button.text for button in buttons}
+    data = {button.callback_data for button in buttons}
+    assert {
+        "💰 موجودی بانک",
+        "💳 شماره کارت",
+        "💵 سپرده‌گذاری",
+        "💸 برداشت",
+        "💳 انتقال وجه",
+        "📜 تاریخچه تراکنش‌ها",
+    } <= texts
+    assert {
+        callbacks.BANK_BALANCE,
+        callbacks.BANK_CARD,
+        callbacks.BANK_DEPOSIT,
+        callbacks.BANK_WITHDRAW,
+        callbacks.BANK_TRANSFER,
+        callbacks.BANK_HISTORY,
+    } <= data
 
 
 def test_back_button_returns_to_main_menu():

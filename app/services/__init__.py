@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.database.repositories.bank_account_repository import BankAccountRepository
 from app.services.admin_service import AdminService
+from app.services.bank_service import BankService
 from app.services.business_service import BusinessService
 from app.services.divar_service import DivarService
 from app.services.family_service import FamilyService
@@ -30,6 +32,7 @@ CarService = VehicleService
 __all__ = [
     "ServiceRegistry",
     "AdminService",
+    "BankService",
     "BusinessService",
     "DivarService",
     "PlayerService",
@@ -54,9 +57,13 @@ class ServiceRegistry:
         *,
         market_provider=None,
     ) -> None:
-        self.players = PlayerService(session_factory)
         self.levels = LevelService(session_factory)
         self.money = MoneyService(session_factory)
+        self.bank = BankService(session_factory, money_service=self.money)
+        self.iran_bank = self.bank
+        self.players = PlayerService(
+            session_factory, bank_account_repository=BankAccountRepository
+        )
         self.jobs = JobService(session_factory, money_service=self.money)
         self.businesses = BusinessService(session_factory, money_service=self.money)
         self.market = IranMarketService(

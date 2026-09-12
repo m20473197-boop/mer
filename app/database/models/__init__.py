@@ -2,6 +2,8 @@
 
 from app.database.models.admin_audit_log import AdminAuditLog
 from app.database.models.base import Base
+from app.database.models.bank_account import BankAccount
+from app.database.models.bank_transaction import BankTransaction
 from app.database.models.bot_setting import BotSetting
 from app.database.models.business import Business
 from app.database.models.child import Child
@@ -40,6 +42,8 @@ from app.database.models.xp_transaction import XPTransaction
 
 __all__ = [
     "Base",
+    "BankAccount",
+    "BankTransaction",
     "AdminAuditLog",
     "BotSetting",
     "Business",
