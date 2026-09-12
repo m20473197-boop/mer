@@ -1,0 +1,50 @@
+name: Run Iran Life Bot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'tests/**'
+      - '.github/workflows/main.yml'
+
+jobs:
+  run-bot:
+    name: Run bot with GitHub Secrets
+    runs-on: ubuntu-latest
+    # Only run on main branch pushes or manual dispatch
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate BOT_TOKEN is provided via secrets
+        run: |
+          if [ -z "${{ secrets.BOT_TOKEN }}" ]; then
+            echo "WARNING: BOT_TOKEN secret is not set in GitHub Secrets"
+            echo "Please add it via: Settings > Secrets and variables > Actions > New repository secret"
+            echo "Name: BOT_TOKEN, Value: your token from @BotFather"
+          else
+            echo "OK: BOT_TOKEN secret is configured (value hidden)"
+          fi
+
+      - name: Run bot
+        run: |
+          python main.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'sqlite+aiosqlite:///data/iran_life_bot.db' }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS || '' }}
