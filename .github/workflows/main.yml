@@ -1,0 +1,74 @@
+name: Test Dragon Bot
+name: Iran Life Bot CI
+
+on:
+  push:
+    branches:
+      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run:
+          pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run test
+        run:
+          python main.py
+      - name: Run tests
+        run: |
+          pytest -q
+        env:
+          # Dummy token for tests that need config (tests mock BOT_TOKEN where needed)
+          BOT_TOKEN: dummy_token_for_ci_tests
+
+  security-check:
+    name: Security check - no secrets in repo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for .env file
+        run: |
+          if [ -f .env ]; then
+            echo "ERROR: .env file found in repository! It should be gitignored."
+            exit 1
+          fi
+          echo "OK: No .env file in repo"
+
+      - name: Check .env.example uses placeholder
+        run: |
+          if grep -q "your_bot_token_here" .env.example; then
+            echo "OK: .env.example uses placeholder"
+          else
+            echo "WARNING: .env.example should use placeholder token"
+          fi
+          # Ensure no real token pattern in tracked files (simple heuristic)
+          if grep -r "BOT_TOKEN=.*:AA" --include="*.py" --include="*.env" --include="*.yml" --include="*.yaml" . 2>/dev/null | grep -v "your_bot_token_here" | grep -v "your_real_token" | grep -v "123456:ABC" | grep -v "dummy_token"; then
+            echo "WARNING: Potential real token found"
+            exit 1
+          fi
+          echo "OK: No real tokens detected"
