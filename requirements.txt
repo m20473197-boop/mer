@@ -1,0 +1,5 @@
+# Core dependencies (pinned — see README for upgrade guidance)
+python-telegram-bot==22.8
+SQLAlchemy==2.0.52
+aiosqlite==0.22.1
+python-dotenv==1.2.3

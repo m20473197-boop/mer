@@ -1,10 +1,7 @@
-name: Test Dragon Bot
 name: Iran Life Bot CI
 
 on:
   push:
-    branches:
-      - main
     branches: [main]
   pull_request:
     branches: [main]
@@ -16,27 +13,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
           python-version: "3.13"
 
       - name: Install dependencies
-        run:
-          pip install -r requirements.txt
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Run test
-        run:
-          python main.py
       - name: Run tests
         run: |
           pytest -q
